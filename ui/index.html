@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WooodSubs — wooodestic subtitles</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <audio id="real-audio" preload="metadata"></audio>
+
+  <div id="app-shell" data-theme="dark">
+
+    <!-- =========================================================================
+         MAIN VIEW: SRT GENERATOR STUDIO
+         ========================================================================= -->
+    <div id="view-main" style="flex:1;min-height:0;display:flex;flex-direction:column;gap:5px;overflow:hidden;">
+
+    <!-- ==================== ZONE 1: TOP BRUSHED METAL BAR ==================== -->
+    <header class="metal-top-plate">
+      <div class="brand-lockup">
+        <span class="brand-code">WooodSubs</span>
+        <div class="brand-sub">
+          <span>wooodestic</span>
+          <span>subtitles</span>
+        </div>
+      </div>
+
+      <div class="oled-bar">
+        <div class="oled-screen" title="Текущий источник / статус подключения к DaVinci Resolve">
+          <span style="display:flex;align-items:center;gap:8px;min-width:0;">
+            <span id="oled-dot" class="oled-dot"></span>
+            <span id="oled-text" class="truncate" style="font-size:12px;font-weight:500;">Проверка DaVinci Resolve...</span>
+          </span>
+          <span id="oled-tag" class="font-mono" style="font-size:10px;color:#8A94A6;flex-shrink:0;">RESOLVE</span>
+        </div>
+        <button onclick="refreshTimeline(true)" class="etch-btn" title="Обновить открытый таймлайн DaVinci Resolve">↻</button>
+      </div>
+
+      <div class="header-right">
+        <div class="theme-seg" role="group" aria-label="Тема оформления">
+          <button id="tbtn-dark" onclick="setThemeMode('dark')">Тёмная</button>
+          <button id="tbtn-light" onclick="setThemeMode('light')">Светлая</button>
+          <button id="tbtn-windows" onclick="setThemeMode('windows')" title="Программная тема Windows 11 (Fluent / Mica)">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M3 4.5 11.2 3.3v8.1H3V4.5zm9.3-1.4L21 2v9.4h-8.7V3.1zM3 12.6h8.2v8.1L3 19.5v-6.9zm9.3 0H21V22l-8.7-1.2v-8.2z"/></svg>
+            <span>WIN</span>
+          </button>
+        </div>
+
+        <button onclick="openSettingsModal()" class="etch-btn" title="Настройки, папка SRT, диаризация, пути и история">
+          <span>☰ Меню</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- ==================== ZONE 2 + 3: CLEAN 4-CHANNEL RC-20 RACK ==================== -->
+    <section id="hardware-rack" class="hardware-rack">
+      <div class="vis-bay">
+        <canvas id="vis-0"></canvas>
+        <canvas id="vis-1"></canvas>
+        <canvas id="vis-2"></canvas>
+        <canvas id="vis-3"></canvas>
+      </div>
+
+      <!-- 4 Clean Colored Channel Bays -->
+      <div id="rack-channels" class="channels-grid-4">
+        <!-- 1. SOURCE -->
+        <div class="channel-card" style="background:var(--ch-0-bg);">
+          <div class="ch-title">1 · Источник</div>
+          <div class="seg-pills">
+            <button onclick="setSourceMode('timeline')" data-smode="timeline" class="seg-pill" style="--pill-acc:var(--ch-0-acc);">Таймлайн</button>
+            <button onclick="setSourceMode('file')" data-smode="file" class="seg-pill" style="--pill-acc:var(--ch-0-acc);">Файл</button>
+            <button onclick="setSourceMode('url')" data-smode="url" class="seg-pill" style="--pill-acc:var(--ch-0-acc);">URL</button>
+          </div>
+          <div id="src-control-slot"></div>
+        </div>
+
+        <!-- 2. MODEL -->
+        <div class="channel-card" style="background:var(--ch-1-bg);">
+          <div class="ch-title">2 · Модель WhisperX</div>
+          <div class="ch-selector" style="color:var(--ch-1-acc);">
+            <button type="button" class="step-arrow" onclick="stepModel(-1)" title="Предыдущая модель">◀</button>
+            <button type="button" id="model-picker-btn" class="model-drop-trigger" onclick="toggleModelDropdown(event)" title="Нажмите, чтобы выбрать модель из списка">
+              <span id="model-label">MEDIUM</span>
+              <span style="font-size:9px;opacity:0.75;">▾</span>
+            </button>
+            <button type="button" class="step-arrow" onclick="stepModel(1)" title="Следующая модель">▶</button>
+          </div>
+          <div id="model-hint" class="ch-hint">Баланс скорости и качества · рекомендуется для RTX 5070</div>
+        </div>
+
+        <!-- 3. LANGUAGE & BATCH -->
+        <div class="channel-card" style="background:var(--ch-2-bg);">
+          <div class="ch-title">3 · Язык и пакет</div>
+          <div class="seg-pills">
+            <button onclick="setLanguage('ru')" data-lang="ru" class="seg-pill" style="--pill-acc:var(--ch-2-acc);">RU</button>
+            <button onclick="setLanguage('en')" data-lang="en" class="seg-pill" style="--pill-acc:var(--ch-2-acc);">EN</button>
+            <button onclick="setLanguage('auto')" data-lang="auto" class="seg-pill" style="--pill-acc:var(--ch-2-acc);">AUTO</button>
+          </div>
+          <div class="batch-slider-wrap">
+            <div style="display:flex;justify-content:space-between;font-size:10px;font-weight:700;color:var(--ch-subtext);">
+              <span>РАЗМЕР ПАКЕТА</span>
+              <span id="batch-inline-val" class="font-mono" style="color:var(--ch-2-acc);">4</span>
+            </div>
+            <div id="batch-slider" class="h-slot-track" title="Тяните влево/вправо или крутите колесо (1 / 2 / 4 / 8 / 16)">
+              <div id="batch-fill" class="h-slot-fill" style="width:50%;background:var(--ch-2-acc);"></div>
+              <div id="batch-thumb" class="h-slot-thumb" style="left:50%;"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 4. ALIGNMENT & EDITOR -->
+        <div id="ch-align-card" class="channel-card" style="background:var(--ch-3-bg);">
+          <div class="ch-title">4 · Выравнивание слов</div>
+          <div class="ch-hint" id="align-desc">Точные таймкоды каждого слова и пауз речи для Text+ в Resolve</div>
+          <button onclick="openCaptionEditor()" class="ch-action-btn" style="border-color:rgba(162,234,208,0.4);color:var(--ch-3-acc);">
+            <span>✎ Редактор субтитров</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Lower Brushed Metal 4-Bay Strip -->
+      <div id="rack-knobs" class="metal-bottom-plate-4">
+        <div class="knob-bay">
+          <span id="led-resolve" class="led-btn" onclick="refreshTimeline(true)" title="Статус подключения DaVinci Resolve"></span>
+          <div class="bay-meta">
+            <span class="bay-title">ИСТОЧНИК</span>
+            <span id="bay-src-val" class="bay-val truncate">Resolve</span>
+          </div>
+        </div>
+
+        <div class="knob-bay">
+          <div id="model-knob" class="big-knob-wrap" title="Крутите вверх/вниз или колесом для смены модели">
+            <svg style="position:absolute;inset:0;pointer-events:none;" width="46" height="46" viewBox="0 0 46 46">
+              <circle cx="23" cy="23" r="20" fill="none" stroke="rgba(0,0,0,0.16)" stroke-width="2.4" stroke-dasharray="94.2 125.6" stroke-linecap="round" transform="rotate(135 23 23)" />
+              <circle id="model-knob-arc" cx="23" cy="23" r="20" fill="none" stroke="var(--accent)" stroke-width="2.4" stroke-dasharray="70 125.6" stroke-linecap="round" transform="rotate(135 23 23)" />
+            </svg>
+            <div id="model-knob-body" class="big-knob-body" style="transform:rotate(67deg);">
+              <div class="big-knob-notch"></div>
+            </div>
+          </div>
+          <div class="bay-meta">
+            <span class="bay-title">МОДЕЛЬ</span>
+            <span id="bay-model-val" class="bay-val">medium</span>
+          </div>
+        </div>
+
+        <div class="knob-bay">
+          <div id="batch-knob" class="big-knob-wrap" title="Крутите вверх/вниз или колесом для размера пакета">
+            <svg style="position:absolute;inset:0;pointer-events:none;" width="46" height="46" viewBox="0 0 46 46">
+              <circle cx="23" cy="23" r="20" fill="none" stroke="rgba(0,0,0,0.16)" stroke-width="2.4" stroke-dasharray="94.2 125.6" stroke-linecap="round" transform="rotate(135 23 23)" />
+              <circle id="batch-knob-arc" cx="23" cy="23" r="20" fill="none" stroke="var(--accent)" stroke-width="2.4" stroke-dasharray="47 125.6" stroke-linecap="round" transform="rotate(135 23 23)" />
+            </svg>
+            <div id="batch-knob-body" class="big-knob-body" style="transform:rotate(0deg);">
+              <div class="big-knob-notch"></div>
+            </div>
+          </div>
+          <div class="bay-meta">
+            <span class="bay-title">ПАКЕТ</span>
+            <span id="bay-batch-val" class="bay-val">batch 4</span>
+          </div>
+        </div>
+
+        <div class="knob-bay">
+          <button id="led-align" onclick="toggleAlign()" class="led-btn on" title="Включить / выключить выравнивание таймкодов слов"></button>
+          <div class="bay-meta">
+            <span class="bay-title">ALIGN</span>
+            <span id="bay-align-val" class="bay-val">ВКЛ</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== ZONE 4: MAIN ACTION BAR & WORKSPACE ==================== -->
+    <section class="console-deck">
+      <div class="action-bar">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <button id="main-run-btn" onclick="toggleStartStop()" class="btn-primary">▶ Создать SRT</button>
+          <button onclick="openCaptionEditor()" class="btn-secondary">Редактор субтитров</button>
+          <button onclick="openExistingSrt()" class="btn-secondary">Открыть готовый SRT</button>
+          <button onclick="openDestFolder()" class="btn-secondary" title="Открыть папку с сохранёнными субтитрами">Папка SRT</button>
+        </div>
+
+        <div class="progress-box">
+          <div style="display:flex;justify-content:space-between;font-size:11px;gap:8px;">
+            <span id="status-text" class="truncate" style="color:var(--text-sec);font-weight:500;">Готово к запуску</span>
+            <span id="status-pct" class="font-mono" style="color:var(--accent);font-weight:700;"></span>
+          </div>
+          <div class="progress-track">
+            <div id="progress-fill" class="progress-fill"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Sub-tabs: Subtitles | Log + Compact Rack Toggle -->
+      <div class="sub-bar">
+        <div style="display:flex;align-items:center;gap:4px;">
+          <button onclick="switchTab('subs')" data-tab="subs" class="tab-btn active">Субтитры <span id="sub-count" class="font-mono" style="opacity:0.65;"></span></button>
+          <button onclick="switchTab('log')" data-tab="log" class="tab-btn">Журнал</button>
+        </div>
+
+        <div style="display:flex;align-items:center;gap:8px;">
+          <input id="sub-search" oninput="renderSubtitles()" type="text" placeholder="Поиск по тексту..." class="c-input" style="height:26px;width:180px;font-size:11.5px;" />
+          <button id="copy-srt-btn" onclick="copyCurrentSubtitles()" class="etch-btn sm hidden">Копировать текст</button>
+          <button id="collapse-btn" onclick="toggleRackCompact()" class="etch-btn sm" title="Свернуть/развернуть верхнюю панель">▲ Свернуть панель</button>
+        </div>
+      </div>
+
+      <!-- Optional Mini Audio Player (appears automatically when a local audio file is loaded) -->
+      <div id="mini-player" class="mini-player hidden">
+        <button id="play-btn" onclick="togglePlay()" class="etch-btn sm" style="min-width:64px;">▶ PLAY</button>
+        <div id="wave-wrap" class="wave-box"><canvas id="wave-canvas"></canvas></div>
+        <span id="player-time" class="font-mono" style="font-size:11px;color:var(--text-sec);">00:00 / 00:00</span>
+      </div>
+
+      <!-- TAB 1: SUBTITLES VIEW -->
+      <div id="tab-subs" class="workspace-body"></div>
+
+      <!-- TAB 2: LOG VIEW -->
+      <div id="tab-log" class="workspace-body hidden" style="padding:10px 14px;">
+        <pre id="log-output" class="log-pre">Готово к запуску WhisperX...</pre>
+      </div>
+    </section>
+
+    </div><!-- /#view-main -->
+
+    <!-- =========================================================================
+         CAPTION EDITOR VIEW (MATCHING RC-20 RETRO HARDWARE STYLE!)
+         ========================================================================= -->
+    <div id="view-editor" class="editor-shell hidden">
+      <!-- Top Brushed Metal Editor Bar -->
+      <header class="metal-top-plate">
+        <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;">
+          <button type="button" onclick="closeEditorView()" class="etch-btn" title="Вернуться к генерации SRT">← Назад</button>
+          <div class="brand-lockup">
+            <span class="brand-code" style="font-size:19px;">WooodSubs</span>
+            <div class="brand-sub">
+              <span>РЕДАКТОР</span>
+              <span>СУБТИТРОВ</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="oled-bar" style="max-width:340px;">
+          <div class="oled-screen" title="Текущий файл и активный пресет оформления">
+            <span style="display:flex;align-items:center;gap:7px;min-width:0;">
+              <span class="oled-dot"></span>
+              <span id="ed-oled-title" class="truncate" style="font-size:11.5px;font-weight:500;">Редактор субтитров</span>
+            </span>
+            <span id="ed-preset-pill" class="font-mono truncate" style="font-size:10px;color:#A2EAD0;max-width:130px;">Стандарт</span>
+          </div>
+        </div>
+
+        <div class="header-right">
+          <button type="button" onclick="edPickFile()" class="etch-btn">Открыть</button>
+          <button type="button" onclick="openOrthoModal()" class="etch-btn" title="Удаление знаков препинания и регистр слов">Орфография</button>
+          <button type="button" id="ed-save-menu-btn" onclick="toggleEdPopover('save', event)" class="etch-btn">Сохранить ▾</button>
+          <button type="button" id="ed-style-menu-btn" onclick="toggleEdPopover('style', event)" class="etch-btn">Оформление ▾</button>
+          <button type="button" id="ed-export-btn" onclick="edExportResolve()" class="btn-primary" style="height:32px;min-width:162px;padding:0 13px;font-size:11px;">▶ Text+ в Resolve</button>
+        </div>
+      </header>
+
+      <!-- Clean 2-Bay RC-20 Hardware Control Strip (Layout + Timing / AI Mask) -->
+      <section class="ed-rack-strip">
+        <!-- Bay 1: Word Grouping & Timing -->
+        <div class="ed-bay" style="background:var(--ch-1-bg);">
+          <div class="ch-title">Разбивка и пословный ритм</div>
+          <div class="ed-row">
+            <label style="font-size:11px;color:var(--ch-subtext);display:flex;align-items:center;gap:4px;">
+              Слов <input id="ed-per-line" type="number" min="1" max="20" value="3" class="ed-num" />
+            </label>
+            <label style="font-size:11px;color:var(--ch-subtext);display:flex;align-items:center;gap:4px;">
+              Строк <input id="ed-line-count" type="number" min="1" max="8" value="2" class="ed-num" />
+            </label>
+            <button type="button" onclick="edApplyLayout()" class="ed-bay-btn">Разбить</button>
+            <button type="button" id="ed-undo-layout-btn" onclick="edUndoLayout()" class="ed-bay-btn hidden" title="Вернуть предыдущую разбивку">↩</button>
+            <button type="button" onclick="edApplyWords(false)" class="ed-bay-btn">По слову</button>
+            <button type="button" onclick="edApplyWords(true)" class="ed-bay-btn" style="border-color:rgba(242,236,170,0.45);color:var(--ch-1-acc);">Накопление</button>
+            <button type="button" id="ed-undo-words-btn" onclick="edUndoWords()" class="ed-bay-btn hidden" title="Отменить режим по словам">↩ Отмена слов</button>
+          </div>
+        </div>
+
+        <!-- Bay 2: Hold Duration & Text Behind Person (AI Matte) -->
+        <div class="ed-bay" style="background:var(--ch-3-bg);">
+          <div class="ch-title">Длительность Text+ и ИИ-маска</div>
+          <div class="ed-row">
+            <select id="ed-hold-mode" onchange="onEdHoldModeChange()" class="ed-sel">
+              <option value="До конца речи" selected>До конца речи</option>
+              <option value="До следующего блока">До следующего блока</option>
+              <option value="Вручную (сек)">Вручную (сек)</option>
+            </select>
+            <input id="ed-hold-sec" type="text" value="2,0" disabled class="ed-num" style="width:52px;opacity:0.45;" />
+            <button type="button" onclick="edApplyHold(true)" class="ed-bay-btn" title="Применить к выбранному блоку">К выбр.</button>
+            <button type="button" onclick="edApplyHold(false)" class="ed-bay-btn" title="Применить ко всем блокам">Ко всем</button>
+            <button type="button" onclick="toggleBehindPerson()" class="ed-led-pill" title="Текст за персонажем (ИИ-маска переднего плана)">
+              <span id="ed-led-matte" class="led-btn on" style="width:12px;height:12px;"></span>
+              <span>За персонажем</span>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Main 2-Column Editor Workspace -->
+      <section class="ed-workspace">
+        <!-- Left Pane: Captions List -->
+        <div class="ed-pane">
+          <div class="ed-pane-head">
+            <div style="display:flex;align-items:center;gap:5px;">
+              <button type="button" onclick="edAddRow()" class="etch-btn sm">+ Добавить</button>
+              <button type="button" onclick="edSplitRow()" class="etch-btn sm" title="Разделить по положению курсора в тексте">Разделить</button>
+              <button type="button" onclick="edMergeNext()" class="etch-btn sm">Объединить</button>
+              <button type="button" onclick="edDeleteRow()" class="etch-btn sm" style="color:var(--danger);">Удалить</button>
+            </div>
+            <input id="ed-search" oninput="renderEdList()" type="text" placeholder="Фильтр реплик..." class="c-input" style="height:26px;width:140px;font-size:11.5px;" />
+          </div>
+          <div id="ed-list" class="ed-list"></div>
+        </div>
+
+        <!-- Right Pane: Selected Caption Inspector + Live 16:9 Frame Preview -->
+        <div class="ed-pane">
+          <div class="ed-pane-head">
+            <span style="font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-sec);">Инспектор реплики</span>
+            <span id="ed-active-badge" class="font-mono" style="font-size:11px;color:var(--accent);">Не выбрана</span>
+          </div>
+
+          <div id="ed-inspector" class="ed-inspector">
+            <!-- 16:9 Live DaVinci Resolve Preview Canvas (Animations + Distressed Texture + Shadow) -->
+            <div class="ed-preview-stage">
+              <canvas id="ed-preview-canvas"></canvas>
+              <div class="ed-preview-hud">
+                <div style="display:flex;gap:4px;">
+                  <button type="button" id="ed-prev-play" onclick="toggleEdPreviewPlay()" title="Пауза / Воспроизведение анимации">❚❚</button>
+                  <button type="button" onclick="replayEdPreview()" title="Запустить анимацию сначала">↻</button>
+                  <button type="button" id="ed-prev-pos-btn" onclick="toggleEdPreviewCenter()" title="Переключить: по центру превью или точные координаты X/Y кадра">Центр</button>
+                </div>
+                <span id="ed-prev-badge" class="ed-preview-badge">DaVinci Resolve 16:9</span>
+              </div>
+              <div class="ed-preview-bar"><div id="ed-prev-bar-fill" class="ed-preview-bar-fill"></div></div>
+            </div>
+
+            <!-- Text Area -->
+            <div>
+              <label class="field-lbl">Текст реплики (Enter — новая строка · курсор задаёт точку «Разделить»)</label>
+              <textarea id="ed-f-text" oninput="onEdFieldLive()" onblur="edCommitActive()" class="ed-textarea" placeholder="Текст субтитра..."></textarea>
+            </div>
+
+            <!-- Timestamps -->
+            <div class="grid-2">
+              <div>
+                <label class="field-lbl">Начало (ЧЧ:ММ:СС,мс)</label>
+                <input id="ed-f-start" onblur="edCommitActive()" type="text" class="c-input font-mono" />
+              </div>
+              <div>
+                <label class="field-lbl">Конец (ЧЧ:ММ:СС,мс)</label>
+                <input id="ed-f-end" onblur="edCommitActive()" type="text" class="c-input font-mono" />
+              </div>
+            </div>
+
+            <!-- Font & Style -->
+            <div class="grid-2">
+              <div>
+                <label class="field-lbl">Шрифт (DaVinci Resolve)</label>
+                <div style="display:flex;gap:5px;">
+                  <input id="ed-f-font" list="ed-fonts-datalist" onchange="onEdFontChange()" onblur="edCommitActive()" class="c-input" style="flex:1;" />
+                  <datalist id="ed-fonts-datalist"></datalist>
+                  <button type="button" onclick="edRefreshFonts()" class="etch-btn sm" style="height:32px;" title="Обновить шрифты из Resolve">↻</button>
+                </div>
+              </div>
+              <div>
+                <label class="field-lbl">Начертание</label>
+                <input id="ed-f-style" list="ed-styles-datalist" onchange="onEdFieldLive(); edCommitActive()" class="c-input" />
+                <datalist id="ed-styles-datalist"></datalist>
+              </div>
+            </div>
+
+            <!-- Color, Size, Side -->
+            <div class="grid-3">
+              <div>
+                <label class="field-lbl">Цвет</label>
+                <div style="display:flex;gap:5px;align-items:center;">
+                  <input id="ed-f-color-pick" type="color" value="#F5F3ED" oninput="onEdColorPick(this.value)" style="width:32px;height:32px;border:none;background:transparent;cursor:pointer;padding:0;" />
+                  <input id="ed-f-color" onchange="onEdFieldLive(); edCommitActive()" type="text" class="c-input font-mono" style="flex:1;padding:0 6px;" />
+                </div>
+              </div>
+              <div>
+                <label class="field-lbl">Размер (0..1)</label>
+                <input id="ed-f-size" oninput="onEdFieldLive()" onblur="edCommitActive()" type="number" step="0.005" min="0.01" max="0.5" class="c-input font-mono" />
+              </div>
+              <div>
+                <label class="field-lbl">Сторона кадра</label>
+                <select id="ed-f-side" onchange="onEdSideChange()" class="c-input">
+                  <option value="auto">Авто</option>
+                  <option value="left">Слева</option>
+                  <option value="right">Справа</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- X, Y, Animation, Frames -->
+            <div class="grid-2">
+              <div class="grid-2">
+                <div>
+                  <label class="field-lbl">Позиция X</label>
+                  <input id="ed-f-x" oninput="onEdFieldLive()" onblur="edCommitActive()" type="number" step="0.01" min="0" max="1" class="c-input font-mono" />
+                </div>
+                <div>
+                  <label class="field-lbl">Позиция Y</label>
+                  <input id="ed-f-y" oninput="onEdFieldLive()" onblur="edCommitActive()" type="number" step="0.01" min="0" max="1" class="c-input font-mono" />
+                </div>
+              </div>
+              <div class="grid-2">
+                <div>
+                  <label class="field-lbl">Анимация</label>
+                  <select id="ed-f-anim" onchange="edCommitActive()" class="c-input" style="padding:0 6px;">
+                    <option value="Без анимации">Нет</option>
+                    <option value="Увеличение">Увеличение</option>
+                    <option value="Плавное появление">Плавное</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="field-lbl">Кадров</label>
+                  <input id="ed-f-frames" onblur="edCommitActive()" type="number" min="1" max="60" class="c-input font-mono" />
+                </div>
+              </div>
+            </div>
+
+            <button type="button" onclick="edApplyStyleAll()" class="btn-secondary" style="width:100%;justify-content:center;height:32px;">
+              Применить оформление ко всем репликам
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Editor Bottom Status Bar -->
+      <div class="ed-status-bar">
+        <span id="ed-status-text" class="truncate">Откройте SRT или добавьте реплику.</span>
+        <span id="ed-rows-count" class="font-mono" style="color:var(--text-muted);">0 реплик</span>
+      </div>
+    </div><!-- /#view-editor -->
+
+    <!-- Editor Floating Popover Menus (Save / Style) -->
+    <div id="ed-pop-save" class="ed-popover hidden">
+      <button type="button" class="ed-pop-item" onclick="edSaveSrt()">Сохранить SRT…</button>
+      <button type="button" class="ed-pop-item" onclick="edSaveProject()">Сохранить проект (.whisperx.json)…</button>
+    </div>
+
+    <div id="ed-pop-style" class="ed-popover hidden">
+      <button type="button" class="ed-pop-item" onclick="edImportResolveStyle()">Импортировать из Text+ под курсором (Resolve)</button>
+      <button type="button" class="ed-pop-item" onclick="edImportStyleJson()">Импортировать оформление из JSON…</button>
+      <button type="button" class="ed-pop-item" onclick="edSaveStyleJson()">Сохранить пресет оформления…</button>
+      <button type="button" class="ed-pop-item" onclick="edAutoPlaceSides()">Подобрать стороны по кадру (Resolve)</button>
+      <button type="button" class="ed-pop-item" onclick="edClearRefStyle()" style="color:var(--danger);">Снять фактуру с выбранной реплики</button>
+    </div>
+
+    <!-- ==================== MODAL: MENU & ADVANCED SETTINGS ==================== -->
+    <div id="modal-settings" class="modal-backdrop hidden">
+      <div class="modal-box">
+        <div class="metal-top-plate" style="height:42px;border-radius:0;">
+          <span class="font-display" style="font-weight:800;font-size:13.5px;letter-spacing:0.06em;text-transform:uppercase;">☰ Настройки и дополнительные функции</span>
+          <button onclick="closeSettingsModal()" style="font-weight:700;cursor:pointer;padding:4px 6px;">✕</button>
+        </div>
+
+        <div class="modal-body">
+          <!-- Hardware & Tools Status -->
+          <div id="diag-grid" class="grid-2" style="font-size:11.5px;"></div>
+
+          <!-- Destination Folder -->
+          <div>
+            <label class="field-lbl">Папка сохранения SRT</label>
+            <div style="display:flex;gap:8px;">
+              <input id="set-dest" type="text" class="c-input font-mono" style="flex:1;" />
+              <button onclick="browseDestination()" class="etch-btn sm" style="height:32px;">Обзор…</button>
+            </div>
+          </div>
+
+          <!-- Optional Speaker Diarization (Hidden cleanly from main screen!) -->
+          <div class="c-card" style="display:flex;flex-direction:column;gap:10px;">
+            <label style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;">
+              <div>
+                <div style="font-size:12.5px;font-weight:600;">Разделение спикеров (Diarization · pyannote)</div>
+                <div style="font-size:11px;color:var(--text-muted);">Опционально. Требуется бесплатный HuggingFace Token.</div>
+              </div>
+              <input id="set-diarize" type="checkbox" style="width:16px;height:16px;cursor:pointer;" />
+            </label>
+            <div class="grid-2">
+              <div>
+                <label class="field-lbl">HuggingFace Token</label>
+                <input id="set-hf-token" type="password" placeholder="hf_xxxxxxxxxxxx" class="c-input font-mono" />
+              </div>
+              <div>
+                <label class="field-lbl">Макс. спикеров</label>
+                <input id="set-max-spk" type="number" min="1" max="10" value="4" class="c-input font-mono" />
+              </div>
+            </div>
+          </div>
+
+          <!-- Advanced Engine Paths & Compute Type -->
+          <div class="grid-2">
+            <div>
+              <label class="field-lbl">Compute Type</label>
+              <select id="set-compute" class="c-input">
+                <option value="float16">float16 (NVIDIA CUDA)</option>
+                <option value="int8">int8 (экономия VRAM / CPU)</option>
+                <option value="float32">float32</option>
+                <option value="default">default</option>
+              </select>
+            </div>
+            <div>
+              <label class="field-lbl">Путь к whisperx.exe</label>
+              <div style="display:flex;gap:6px;">
+                <input id="set-wx-cmd" type="text" class="c-input font-mono" style="flex:1;" />
+                <button onclick="browseExe('set-wx-cmd')" class="etch-btn sm" style="height:32px;">…</button>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label class="field-lbl">Путь к yt-dlp.exe (для режима URL / YouTube)</label>
+            <div style="display:flex;gap:6px;">
+              <input id="set-yt-cmd" type="text" class="c-input font-mono" style="flex:1;" />
+              <button onclick="browseExe('set-yt-cmd')" class="etch-btn sm" style="height:32px;">…</button>
+            </div>
+          </div>
+
+          <!-- Recent SRT History -->
+          <div>
+            <label class="field-lbl">Недавние субтитры</label>
+            <div id="history-list" style="display:flex;flex-direction:column;gap:6px;max-height:140px;overflow-y:auto;"></div>
+          </div>
+        </div>
+
+        <div class="modal-foot">
+          <button onclick="refreshDiagnostics()" class="etch-btn sm" style="height:30px;">Обновить диагностику</button>
+          <div style="display:flex;gap:8px;">
+            <button onclick="closeSettingsModal()" class="etch-btn sm" style="height:30px;">Закрыть</button>
+            <button onclick="saveSettingsModal()" class="btn-primary" style="height:30px;padding:0 14px;font-size:11.5px;">Сохранить</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal: Multi-Select Orthography & Case Cleaner -->
+    <div id="modal-ortho" class="modal-backdrop hidden">
+      <div class="modal-box" style="max-width:520px;">
+        <div class="metal-top-plate" style="height:42px;border-radius:0;">
+          <span class="font-display" style="font-weight:800;font-size:13.5px;letter-spacing:0.06em;text-transform:uppercase;">Орфография и регистр текста</span>
+          <button type="button" onclick="closeOrthoModal()" style="font-weight:700;cursor:pointer;padding:4px 6px;">✕</button>
+        </div>
+
+        <div class="modal-body">
+          <!-- Punctuation Section (Multi-select checkboxes + quick presets!) -->
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <span class="field-lbl" style="margin:0;">Знаки препинания (можно выбрать несколько)</span>
+              <label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--accent);cursor:pointer;">
+                <input id="ortho-punct-on" type="checkbox" checked onchange="renderOrthoPreview()" style="accent-color:var(--accent);" />
+                <span>Обрабатывать знаки</span>
+              </label>
+            </div>
+
+            <div class="ortho-chip-row">
+              <button type="button" class="ortho-chip" onclick="setOrthoPunctPreset('none')">Убрать все</button>
+              <button type="button" class="ortho-chip" onclick="setOrthoPunctPreset('qe')">Оставить ? и !</button>
+              <button type="button" class="ortho-chip" onclick="setOrthoPunctPreset('dotcomma')">Точки и запятые</button>
+              <button type="button" class="ortho-chip" onclick="setOrthoPunctPreset('dots')">Только точки</button>
+              <button type="button" class="ortho-chip" onclick="setOrthoPunctPreset('commas')">Только запятые</button>
+            </div>
+
+            <div class="ortho-check-grid">
+              <label class="ortho-opt">
+                <input id="ortho-keep-qe" type="checkbox" onchange="onOrthoCheckChange()" />
+                <span>Оставить <b>?</b> и <b>!</b></span>
+              </label>
+              <label class="ortho-opt">
+                <input id="ortho-keep-dots" type="checkbox" onchange="onOrthoCheckChange()" />
+                <span>Оставить точки (<b>.</b>)</span>
+              </label>
+              <label class="ortho-opt">
+                <input id="ortho-keep-commas" type="checkbox" onchange="onOrthoCheckChange()" />
+                <span>Оставить запятые (<b>,</b>)</span>
+              </label>
+              <label class="ortho-opt">
+                <input id="ortho-strip-all" type="checkbox" checked onchange="onOrthoStripAllToggle(this.checked)" />
+                <span>Убрать все знаки</span>
+              </label>
+            </div>
+          </div>
+
+          <!-- Case Section (Combinable with ANY punctuation checkboxes!) -->
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            <span class="field-lbl" style="margin:0;">Регистр слов (комбинируется со знаками выше)</span>
+            <div class="ortho-check-grid">
+              <label class="ortho-opt">
+                <input type="radio" name="ortho-case" value="keep" checked onchange="renderOrthoPreview()" />
+                <span>Не менять регистр</span>
+              </label>
+              <label class="ortho-opt">
+                <input type="radio" name="ortho-case" value="title" onchange="renderOrthoPreview()" />
+                <span>Все Слова с Заглавной</span>
+              </label>
+              <label class="ortho-opt">
+                <input type="radio" name="ortho-case" value="lower" onchange="renderOrthoPreview()" />
+                <span>все слова с маленькой</span>
+              </label>
+              <label class="ortho-opt">
+                <input type="radio" name="ortho-case" value="upper" onchange="renderOrthoPreview()" />
+                <span>ВСЕ СЛОВА ЗАГЛАВНЫМИ</span>
+              </label>
+            </div>
+          </div>
+
+          <!-- Live Before -> After Preview -->
+          <div class="c-card" style="display:flex;flex-direction:column;gap:4px;">
+            <div style="font-size:10.5px;color:var(--text-muted);text-transform:uppercase;font-weight:700;">Пример на текущей реплике</div>
+            <div id="ortho-preview-before" style="font-size:11.5px;color:var(--text-muted);text-decoration:line-through;opacity:0.75;"></div>
+            <div id="ortho-preview-after" style="font-size:13px;font-weight:600;color:var(--text-main);"></div>
+          </div>
+        </div>
+
+        <div class="modal-foot">
+          <button type="button" id="ortho-undo-btn" onclick="edUndoOrtho()" class="etch-btn sm hidden" style="height:30px;">↩ Отменить</button>
+          <div style="display:flex;gap:8px;margin-left:auto;">
+            <button type="button" onclick="edApplyOrtho(true)" class="btn-secondary" style="height:30px;font-size:11.5px;">К выбранной</button>
+            <button type="button" onclick="edApplyOrtho(false)" class="btn-primary" style="height:30px;padding:0 14px;font-size:11.5px;">Применить ко всем</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Floating Model Selector Dropdown -->
+    <div id="model-dropdown" class="model-dropdown hidden"></div>
+
+    <div id="toast" class="toast">
+      <span class="oled-dot"></span>
+      <span id="toast-msg"></span>
+    </div>
+  </div>
+
+  <script src="./app.js"></script>
+</body>
+</html>

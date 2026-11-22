@@ -1,0 +1,5 @@
+# Optional local AI engine dependencies (install if running real transcription locally)
+# For NVIDIA CUDA 12.1 GPU first install PyTorch:
+#   pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu121
+whisperx>=3.1.5
+yt-dlp>=2024.8.6

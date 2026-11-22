@@ -1,0 +1,17 @@
+# Python / virtual env
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+
+# PyInstaller & installer build outputs
+build/
+dist/
+release/
+
+# Local OS / editor noise
+.DS_Store
+Thumbs.db
+*.log
