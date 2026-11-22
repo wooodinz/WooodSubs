@@ -372,10 +372,495 @@ function applyBatchFromRect(e, r) {
 }
 
 // =========================================================================
-// 4 LIVE COLOR-CODED RC-20 OSCILLOSCOPES
+// 4 LIVE INTERACTIVE RC-20 OSCILLOSCOPES (CARTOON PHYSICS & TOYS)
 // =========================================================================
 let animTick = 0;
-function drawVisualizers() {
+let lastVisTs = 0;
+let visToysReady = false;
+
+const TOWER_PRESETS = [0.42, 1.18, 0.62, 1.0];
+
+const VIS_TOY = {
+  // 0: Red waveform string (pull & twang like a guitar string)
+  red: {
+    dragging: false,
+    snapped: false,
+    grabX: 0.5,
+    pullX: 0,
+    pullY: 0,
+    dispX: 0,
+    dispY: 0,
+    velX: 0,
+    velY: 0,
+    twang: 0,
+    twangPhase: 0,
+    moved: false,
+    startClientX: 0,
+    startClientY: 0,
+    rect: null,
+  },
+  // 1: Yellow twin towers (click to alternate taller/shorter + stretch/bend on drag)
+  towers: [
+    { presetIdx: 3, targetH: 1.0, scaleH: 1.0, velH: 0, tilt: 0, velTilt: 0, flash: 0 },
+    { presetIdx: 2, targetH: 0.84, scaleH: 0.84, velH: 0, tilt: 0, velTilt: 0, flash: 0 },
+  ],
+  towerDrag: {
+    active: false,
+    idx: -1,
+    moved: false,
+    startClientX: 0,
+    startClientY: 0,
+    startScale: 1.0,
+    rect: null,
+  },
+  // 2: Gray line (click -> ECG heartbeat pulse, drag -> cartoon rubber stretch)
+  gray: {
+    pulses: [],
+    pulseBlend: 0,
+    dragging: false,
+    moved: false,
+    grabX: 0.5,
+    pullX: 0,
+    pullY: 0,
+    dispY: 0,
+    velY: 0,
+    startClientX: 0,
+    startClientY: 0,
+    rect: null,
+  },
+  // 3: Green bubbles — varied sizes, positions & organic shapes (click -> POP; drag -> stretch)
+  bubbles: [
+    { bxRatio: 0.13, byRatio: 0.55, rScale: 0.58, ax: 1.20, ay: 0.82, lobes: 2, lobeAmp: 0.13, phase: 0.2, floatAmp: 2.2, floatSpd: 1.3, alive: true, respawn: 0, inflate: 1.0, velInflate: 0, sx: 0, sy: 0, vx: 0, vy: 0, wobble: 0 },
+    { bxRatio: 0.25, byRatio: 0.35, rScale: 0.44, ax: 0.96, ay: 1.05, lobes: 3, lobeAmp: 0.09, phase: 1.4, floatAmp: 2.6, floatSpd: 1.7, alive: true, respawn: 0, inflate: 1.0, velInflate: 0, sx: 0, sy: 0, vx: 0, vy: 0, wobble: 0 },
+    { bxRatio: 0.36, byRatio: 0.57, rScale: 1.02, ax: 1.06, ay: 0.92, lobes: 3, lobeAmp: 0.14, phase: 2.3, floatAmp: 1.8, floatSpd: 1.05, alive: true, respawn: 0, inflate: 1.0, velInflate: 0, sx: 0, sy: 0, vx: 0, vy: 0, wobble: 0 },
+    { bxRatio: 0.50, byRatio: 0.43, rScale: 0.74, ax: 0.82, ay: 1.18, lobes: 4, lobeAmp: 0.16, phase: 3.6, floatAmp: 2.4, floatSpd: 1.45, alive: true, respawn: 0, inflate: 1.0, velInflate: 0, sx: 0, sy: 0, vx: 0, vy: 0, wobble: 0 },
+    { bxRatio: 0.63, byRatio: 0.60, rScale: 0.94, ax: 1.24, ay: 0.78, lobes: 5, lobeAmp: 0.13, phase: 4.5, floatAmp: 1.9, floatSpd: 1.15, alive: true, respawn: 0, inflate: 1.0, velInflate: 0, sx: 0, sy: 0, vx: 0, vy: 0, wobble: 0 },
+    { bxRatio: 0.76, byRatio: 0.37, rScale: 0.64, ax: 0.90, ay: 1.10, lobes: 3, lobeAmp: 0.18, phase: 5.2, floatAmp: 2.5, floatSpd: 1.6, alive: true, respawn: 0, inflate: 1.0, velInflate: 0, sx: 0, sy: 0, vx: 0, vy: 0, wobble: 0 },
+    { bxRatio: 0.87, byRatio: 0.56, rScale: 0.48, ax: 1.04, ay: 0.96, lobes: 2, lobeAmp: 0.08, phase: 0.9, floatAmp: 2.3, floatSpd: 1.85, alive: true, respawn: 0, inflate: 1.0, velInflate: 0, sx: 0, sy: 0, vx: 0, vy: 0, wobble: 0 },
+  ],
+  bubbleDrag: {
+    active: false,
+    idx: -1,
+    moved: false,
+    startClientX: 0,
+    startClientY: 0,
+    rect: null,
+  },
+  particles: [],
+  popRings: [],
+};
+
+function softRubber(val, limit) {
+  return limit * Math.tanh(val / Math.max(1, limit));
+}
+
+function releaseRedString(extraBoost) {
+  const r = VIS_TOY.red;
+  if (!r.dragging) return;
+  r.dragging = false;
+  const c0 = document.getElementById('vis-0');
+  if (c0) c0.classList.remove('vis-grabbing');
+  const pullMag = Math.hypot(r.pullX, r.pullY);
+  const kickY = Math.abs(r.pullY) < 4 ? (Math.random() < 0.5 ? -18 : 18) : r.pullY;
+  r.dispY = kickY;
+  r.dispX = r.pullX;
+  r.velY = -kickY * (14 + (extraBoost || 0));
+  r.velX = -r.pullX * 10;
+  r.twang = Math.min(1.35, Math.max(0.55, pullMag / 14 + (extraBoost ? 0.45 : 0)));
+  r.pullX = 0;
+  r.pullY = 0;
+}
+
+function smoothstep01(t) {
+  const x = Math.max(0, Math.min(1, t));
+  return x * x * (3 - 2 * x);
+}
+
+function getBubbleCenter(b, W, H) {
+  const bobY = Math.sin(animTick * b.floatSpd + b.phase) * b.floatAmp;
+  const bobX = Math.cos(animTick * (b.floatSpd * 0.7) + b.phase) * 1.4;
+  return {
+    x: W * b.bxRatio + bobX,
+    y: H * b.byRatio + bobY,
+  };
+}
+
+function popGreenBubble(idx, W, H) {
+  const b = VIS_TOY.bubbles[idx];
+  if (!b || !b.alive) return;
+  const pos = getBubbleCenter(b, W, H);
+  const bx = pos.x + b.sx * 0.55;
+  const by = pos.y + b.sy * 0.55;
+  const scale = Math.max(0.45, b.rScale || 1.0);
+  b.alive = false;
+  b.respawn = 0.95 + Math.random() * 0.55;
+  b.inflate = 0;
+  b.velInflate = 0;
+  b.sx = 0; b.sy = 0; b.vx = 0; b.vy = 0;
+  b.wobble = 0;
+
+  // Expanding shockwave ring scaled to bubble size
+  VIS_TOY.popRings.push({ x: bx, y: by, r: 4 * scale, maxR: 18 * scale + 5, life: 0.30, maxLife: 0.30 });
+
+  // Cartoon droplets + tiny sparkle bursts
+  const count = Math.max(7, Math.round(11 * scale));
+  for (let i = 0; i < count; i++) {
+    const ang = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.35;
+    const spd = (38 + Math.random() * 68) * (0.65 + scale * 0.45);
+    VIS_TOY.particles.push({
+      x: bx + Math.cos(ang) * 3 * scale,
+      y: by + Math.sin(ang) * 3 * scale,
+      vx: Math.cos(ang) * spd,
+      vy: Math.sin(ang) * spd - 10,
+      r: (i % 3 === 0 ? 2.2 : 1.4) * (0.7 + scale * 0.35),
+      life: 0.34 + Math.random() * 0.22,
+      maxLife: 0.56,
+      bright: i % 3 === 0,
+    });
+  }
+}
+
+function spawnGrayPulse(startNorm) {
+  VIS_TOY.gray.pulses.push({
+    pos: Math.max(-0.08, Math.min(0.85, startNorm - 0.14)),
+    speed: 1.15,
+    amp: 1.0,
+    age: 0,
+  });
+  if (VIS_TOY.gray.pulses.length > 5) VIS_TOY.gray.pulses.shift();
+}
+
+function ecgShape(u) {
+  // u in [-1, 1] around the pulse center -> classic P-Q-R-S-T cardiac spike
+  const p = 0.20 * Math.exp(-Math.pow((u + 0.52) / 0.14, 2));
+  const q = -0.26 * Math.exp(-Math.pow((u + 0.17) / 0.065, 2));
+  const r = 1.05 * Math.exp(-Math.pow((u - 0.0) / 0.075, 2));
+  const s = -0.52 * Math.exp(-Math.pow((u - 0.17) / 0.075, 2));
+  const t = 0.30 * Math.exp(-Math.pow((u - 0.52) / 0.18, 2));
+  return -(p + q + r + s + t);
+}
+
+function initInteractiveVisualizers() {
+  if (visToysReady) return;
+  const c0 = document.getElementById('vis-0');
+  const c1 = document.getElementById('vis-1');
+  const c2 = document.getElementById('vis-2');
+  const c3 = document.getElementById('vis-3');
+  if (!c0 || !c1 || !c2 || !c3) return;
+  visToysReady = true;
+
+  // --- vis-0: Red guitar string ---
+  c0.addEventListener('mousedown', (e) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const rect = c0.getBoundingClientRect();
+    const r = VIS_TOY.red;
+    r.dragging = true;
+    r.snapped = false;
+    r.moved = false;
+    r.rect = rect;
+    r.startClientX = e.clientX;
+    r.startClientY = e.clientY;
+    r.grabX = Math.max(0.08, Math.min(0.92, (e.clientX - rect.left) / Math.max(1, rect.width)));
+    r.pullX = 0;
+    r.pullY = softRubber((e.clientY - (rect.top + rect.height * 0.5)) * 0.75, 20);
+    c0.classList.add('vis-grabbing');
+  });
+
+  // --- vis-1: Yellow bouncy towers ---
+  c1.addEventListener('mousedown', (e) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const rect = c1.getBoundingClientRect();
+    const localX = e.clientX - rect.left;
+    const idx = localX < rect.width * 0.5 ? 0 : 1;
+    const td = VIS_TOY.towerDrag;
+    td.active = true;
+    td.idx = idx;
+    td.moved = false;
+    td.startClientX = e.clientX;
+    td.startClientY = e.clientY;
+    td.startScale = VIS_TOY.towers[idx].scaleH;
+    td.rect = rect;
+    c1.classList.add('vis-grabbing');
+  });
+
+  // --- vis-2: Gray heartbeat pulse / rubber line ---
+  c2.addEventListener('mousedown', (e) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const rect = c2.getBoundingClientRect();
+    const g = VIS_TOY.gray;
+    g.dragging = true;
+    g.moved = false;
+    g.rect = rect;
+    g.startClientX = e.clientX;
+    g.startClientY = e.clientY;
+    g.grabX = Math.max(0.08, Math.min(0.92, (e.clientX - rect.left) / Math.max(1, rect.width)));
+    g.pullX = 0;
+    g.pullY = 0;
+    c2.classList.add('vis-grabbing');
+  });
+
+  // --- vis-3: Green poppable / stretchable bubbles ---
+  c3.addEventListener('mousedown', (e) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const rect = c3.getBoundingClientRect();
+    const localX = e.clientX - rect.left;
+    const localY = e.clientY - rect.top;
+    let bestIdx = -1;
+    let bestDist = Infinity;
+    for (let i = 0; i < VIS_TOY.bubbles.length; i++) {
+      const b = VIS_TOY.bubbles[i];
+      if (!b.alive) continue;
+      const pos = getBubbleCenter(b, rect.width, rect.height);
+      const d = Math.hypot(localX - (pos.x + b.sx * 0.25), localY - (pos.y + b.sy * 0.25));
+      if (d < bestDist) { bestDist = d; bestIdx = i; }
+    }
+    if (bestIdx < 0) return;
+    const bd = VIS_TOY.bubbleDrag;
+    bd.active = true;
+    bd.idx = bestIdx;
+    bd.moved = false;
+    bd.startClientX = e.clientX;
+    bd.startClientY = e.clientY;
+    bd.rect = rect;
+    c3.classList.add('vis-grabbing');
+  });
+
+  // Shared window mousemove / mouseup so dragging stays silky even outside the 48px strip
+  window.addEventListener('mousemove', (e) => {
+    // 0: Red string drag & mid-drag snap!
+    if (VIS_TOY.red.dragging) {
+      const r = VIS_TOY.red;
+      const dx = e.clientX - r.startClientX;
+      const dy = e.clientY - (r.rect.top + r.rect.height * 0.5);
+      if (Math.hypot(dx, e.clientY - r.startClientY) > 3) r.moved = true;
+      r.grabX = Math.max(0.08, Math.min(0.92, (e.clientX - r.rect.left) / Math.max(1, r.rect.width)));
+      r.pullX = softRubber(dx * 0.35, 18);
+      r.pullY = softRubber(dy * 0.92, 22);
+      // Pull far enough -> string SNAPS free and twangs wildly!
+      if (Math.abs(dy) > 36) {
+        r.snapped = true;
+        releaseRedString(8);
+      }
+    }
+
+    // 1: Yellow tower cartoon stretch/squish/bend
+    if (VIS_TOY.towerDrag.active) {
+      const td = VIS_TOY.towerDrag;
+      const dx = e.clientX - td.startClientX;
+      const dy = e.clientY - td.startClientY;
+      if (Math.hypot(dx, dy) > 4) td.moved = true;
+      if (td.moved) {
+        const t = VIS_TOY.towers[td.idx];
+        const nextScale = Math.max(0.32, Math.min(1.26, td.startScale - dy * 0.022));
+        t.scaleH = nextScale;
+        t.targetH = nextScale;
+        t.velH = 0;
+        t.tilt = softRubber(dx * 0.55, 16);
+        t.velTilt = 0;
+        t.flash = 0.55;
+      }
+    }
+
+    // 2: Gray line cartoon pull
+    if (VIS_TOY.gray.dragging) {
+      const g = VIS_TOY.gray;
+      const dx = e.clientX - g.startClientX;
+      const dy = e.clientY - g.startClientY;
+      if (Math.hypot(dx, dy) > 4) g.moved = true;
+      if (g.moved) {
+        g.grabX = Math.max(0.08, Math.min(0.92, (e.clientX - g.rect.left) / Math.max(1, g.rect.width)));
+        g.pullX = softRubber(dx * 0.28, 16);
+        g.pullY = softRubber((e.clientY - (g.rect.top + g.rect.height * 0.5)) * 0.85, 20);
+      }
+    }
+
+    // 3: Green bubble gooey gum stretch -> pops if over-stretched!
+    if (VIS_TOY.bubbleDrag.active) {
+      const bd = VIS_TOY.bubbleDrag;
+      const b = VIS_TOY.bubbles[bd.idx];
+      if (!b || !b.alive) { bd.active = false; c3.classList.remove('vis-grabbing'); return; }
+      const dx = e.clientX - bd.startClientX;
+      const dy = e.clientY - bd.startClientY;
+      if (Math.hypot(dx, dy) > 4) bd.moved = true;
+      if (bd.moved) {
+        b.sx = softRubber(dx * 0.85, 24);
+        b.sy = softRubber(dy * 0.85, 19);
+        b.wobble = 0.9;
+        if (Math.hypot(dx, dy) > 28) {
+          popGreenBubble(bd.idx, bd.rect.width, bd.rect.height);
+          bd.active = false;
+          c3.classList.remove('vis-grabbing');
+        }
+      }
+    }
+  });
+
+  window.addEventListener('mouseup', () => {
+    // 0: Release red string -> twang!
+    if (VIS_TOY.red.dragging) {
+      releaseRedString(0);
+    }
+
+    // 1: Release yellow tower -> click toggles height higher/lower; drag snaps with cartoon bounce
+    if (VIS_TOY.towerDrag.active) {
+      const td = VIS_TOY.towerDrag;
+      const t = VIS_TOY.towers[td.idx];
+      if (!td.moved) {
+        t.presetIdx = (t.presetIdx + 1) % TOWER_PRESETS.length;
+        const prev = t.targetH;
+        t.targetH = TOWER_PRESETS[t.presetIdx];
+        t.velH += (t.targetH > prev ? 6.5 : -6.5);
+        t.flash = 1.0;
+      } else {
+        t.targetH = Math.max(0.40, Math.min(1.20, t.scaleH));
+        t.velTilt = -t.tilt * 9;
+      }
+      td.active = false;
+      c1.classList.remove('vis-grabbing');
+    }
+
+    // 2: Release gray line -> click spawns ECG pulse; drag springs back!
+    if (VIS_TOY.gray.dragging) {
+      const g = VIS_TOY.gray;
+      g.dragging = false;
+      c2.classList.remove('vis-grabbing');
+      if (!g.moved) {
+        spawnGrayPulse(g.grabX);
+      } else {
+        g.dispY = g.pullY;
+        g.velY = -g.pullY * 12;
+        g.pullX = 0;
+        g.pullY = 0;
+      }
+    }
+
+    // 3: Release green bubble -> click POPS it; gentle drag wobbles it back like jelly!
+    if (VIS_TOY.bubbleDrag.active) {
+      const bd = VIS_TOY.bubbleDrag;
+      const b = VIS_TOY.bubbles[bd.idx];
+      bd.active = false;
+      c3.classList.remove('vis-grabbing');
+      if (b && b.alive) {
+        if (!bd.moved) {
+          popGreenBubble(bd.idx, bd.rect.width, bd.rect.height);
+        } else {
+          b.vx = -b.sx * 11;
+          b.vy = -b.sy * 11;
+          b.wobble = 1.35;
+        }
+      }
+    }
+  });
+}
+
+function stepVisualizerPhysics(dt) {
+  // 0: Red guitar string spring + high-freq shimmer
+  const r = VIS_TOY.red;
+  if (!r.dragging) {
+    const accY = -520 * r.dispY - 4.6 * r.velY;
+    r.velY += accY * dt;
+    r.dispY += r.velY * dt;
+    const accX = -320 * r.dispX - 7.5 * r.velX;
+    r.velX += accX * dt;
+    r.dispX += r.velX * dt;
+    r.twang = Math.max(0, r.twang - dt * 0.72);
+    if (Math.abs(r.dispY) < 0.08 && Math.abs(r.velY) < 0.4 && r.twang < 0.01) {
+      r.dispY = 0; r.velY = 0; r.dispX = 0; r.velX = 0; r.twang = 0;
+    }
+  }
+  r.twangPhase += dt * 62;
+
+  // 1: Yellow towers spring & cartoon tilt recovery
+  for (let i = 0; i < 2; i++) {
+    const t = VIS_TOY.towers[i];
+    const isDragged = VIS_TOY.towerDrag.active && VIS_TOY.towerDrag.idx === i && VIS_TOY.towerDrag.moved;
+    if (!isDragged) {
+      const accH = -320 * (t.scaleH - t.targetH) - 10.5 * t.velH;
+      t.velH += accH * dt;
+      t.scaleH = Math.max(0.26, Math.min(1.36, t.scaleH + t.velH * dt));
+      const accT = -260 * t.tilt - 11.0 * t.velTilt;
+      t.velTilt += accT * dt;
+      t.tilt += t.velTilt * dt;
+    }
+    t.flash = Math.max(0, t.flash - dt * 2.4);
+  }
+
+  // 2: Gray line ECG pulses + silky blend back to normal wave + elastic pull spring
+  const g = VIS_TOY.gray;
+  let anyPulseVisible = false;
+  for (let i = g.pulses.length - 1; i >= 0; i--) {
+    const p = g.pulses[i];
+    p.pos += p.speed * dt;
+    p.age += dt;
+    if (p.pos < 1.06) anyPulseVisible = true;
+    if (p.pos > 1.32) g.pulses.splice(i, 1);
+  }
+  const targetBlend = anyPulseVisible ? 1.0 : 0.0;
+  const blendRate = targetBlend > g.pulseBlend ? 7.5 : 1.75;
+  g.pulseBlend += (targetBlend - g.pulseBlend) * Math.min(1, dt * blendRate);
+  if (Math.abs(g.pulseBlend) < 0.002 && !anyPulseVisible) g.pulseBlend = 0;
+
+  if (!g.dragging) {
+    const accY = -380 * g.dispY - 8.2 * g.velY;
+    g.velY += accY * dt;
+    g.dispY += g.velY * dt;
+    if (Math.abs(g.dispY) < 0.05 && Math.abs(g.velY) < 0.4) { g.dispY = 0; g.velY = 0; }
+  }
+
+  // 3: Green bubbles jelly spring, respawn & pop particles
+  for (let i = 0; i < VIS_TOY.bubbles.length; i++) {
+    const b = VIS_TOY.bubbles[i];
+    if (!b.alive) {
+      b.respawn -= dt;
+      if (b.respawn <= 0) {
+        b.alive = true;
+        b.inflate = 0.08;
+        b.velInflate = 10.5;
+        b.wobble = 1.2;
+      }
+      continue;
+    }
+    const accI = -240 * (b.inflate - 1.0) - 9.5 * b.velInflate;
+    b.velInflate += accI * dt;
+    b.inflate = Math.max(0.05, b.inflate + b.velInflate * dt);
+
+    const isDragged = VIS_TOY.bubbleDrag.active && VIS_TOY.bubbleDrag.idx === i && VIS_TOY.bubbleDrag.moved;
+    if (!isDragged) {
+      const ax = -280 * b.sx - 8.8 * b.vx;
+      const ay = -280 * b.sy - 8.8 * b.vy;
+      b.vx += ax * dt; b.sx += b.vx * dt;
+      b.vy += ay * dt; b.sy += b.vy * dt;
+    }
+    b.wobble = Math.max(0, b.wobble - dt * 1.45);
+  }
+
+  for (let i = VIS_TOY.particles.length - 1; i >= 0; i--) {
+    const p = VIS_TOY.particles[i];
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.vx *= 0.94;
+    p.vy = p.vy * 0.94 + 95 * dt;
+    p.life -= dt;
+    if (p.life <= 0) VIS_TOY.particles.splice(i, 1);
+  }
+  for (let i = VIS_TOY.popRings.length - 1; i >= 0; i--) {
+    const pr = VIS_TOY.popRings[i];
+    pr.life -= dt;
+    pr.r = pr.maxR * (1 - Math.max(0, pr.life / pr.maxLife)) + 5;
+    if (pr.life <= 0) VIS_TOY.popRings.splice(i, 1);
+  }
+}
+
+function drawVisualizers(ts) {
+  const now = ts || performance.now();
+  const dt = lastVisTs ? Math.min(0.033, Math.max(0.006, (now - lastVisTs) / 1000)) : 0.016;
+  lastVisTs = now;
+  stepVisualizerPhysics(dt);
+
   const activeEnergy = LIVE.running ? 1.2 : (!audioEl.paused ? 1.05 : 0.42);
   animTick += LIVE.running ? 0.09 : (!audioEl.paused ? 0.075 : 0.022);
   const cs = getComputedStyle(shell);
@@ -400,64 +885,276 @@ function drawVisualizers() {
     ctx.fillStyle = col;
 
     if (idx === 0) {
-      // Source waveform (strictly inside [3, H-3])
+      // 0: Red waveform + guitar-string pull & twang vibration
       const on = SETTINGS.sourceMode !== 'timeline' || TIMELINE.connected;
-      ctx.globalAlpha = on ? 0.9 : 0.25;
-      ctx.lineWidth = 1.5;
+      const r = VIS_TOY.red;
       const mid = H * 0.5;
-      const maxAmp = Math.max(4, H * 0.42);
+      const maxAmp = Math.max(4, H * 0.40);
+      const activePlay = r.dragging || r.twang > 0.01 || Math.abs(r.dispY) > 0.1;
+      const baseAlpha = activePlay ? 0.96 : (on ? 0.9 : 0.3);
+      const grabPx = 6 + r.grabX * (W - 12);
+      const curY = r.dragging ? r.pullY : r.dispY;
+      const curX = r.dragging ? r.pullX : r.dispX;
+
+      const stringOffsetAt = (x, vibSign) => {
+        const u = Math.max(0, Math.min(1, (x - 6) / Math.max(1, W - 12)));
+        const env = u < r.grabX ? (u / Math.max(0.05, r.grabX)) : ((1 - u) / Math.max(0.05, 1 - r.grabX));
+        const smoothEnv = Math.sin(env * Math.PI * 0.5);
+        const harmonic = (!r.dragging && r.twang > 0.01)
+          ? (Math.sin(u * Math.PI) * Math.sin(r.twangPhase) * 4.5 + Math.sin(u * Math.PI * 3) * Math.cos(r.twangPhase * 1.9) * 2.2) * r.twang * (vibSign || 1)
+          : 0;
+        return curY * smoothEnv + harmonic;
+      };
+
+      // Draw vibrating guitar-string chord & ghost trails when pulled or twanging
+      if (activePlay) {
+        const drawChord = (alpha, width, sign, yExtra) => {
+          ctx.save();
+          ctx.globalAlpha = alpha;
+          ctx.lineWidth = width;
+          ctx.beginPath();
+          for (let x = 6; x <= W - 6; x += 3) {
+            const oy = stringOffsetAt(x, sign) + (yExtra || 0);
+            const y = Math.max(2, Math.min(H - 2, mid + oy));
+            if (x === 6) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+          }
+          ctx.stroke();
+          ctx.restore();
+        };
+        if (!r.dragging && r.twang > 0.05) {
+          drawChord(0.24 * r.twang, 1.2, -1, 0);
+          drawChord(0.18 * r.twang, 1.0, 1, 2.2 * Math.sin(r.twangPhase * 1.4));
+        }
+        drawChord(r.dragging ? 0.9 : Math.min(0.85, 0.25 + r.twang * 0.7), r.dragging ? 2.0 : 1.6, 1, 0);
+      }
+
+      // Draw waveform bars riding the elastic string with cartoon stretch near cursor
+      ctx.globalAlpha = baseAlpha;
       for (let x = 6; x < W - 6; x += 4) {
-        const amp = Math.min(maxAmp, Math.abs(Math.sin(x * 0.13 + animTick * 2.1) * Math.cos(x * 0.05 - animTick)) * maxAmp * Math.min(1.0, activeEnergy));
-        ctx.beginPath(); ctx.moveTo(x, mid - amp); ctx.lineTo(x, mid + amp); ctx.stroke();
+        const distNorm = Math.abs(x - (grabPx + curX)) / Math.max(24, W * 0.22);
+        const prox = Math.exp(-distNorm * distNorm);
+        const oy = activePlay ? stringOffsetAt(x, 1) : 0;
+        const stretchBoost = activePlay ? (1 + prox * (Math.abs(curY) / 14 + r.twang * 0.65)) : 1;
+        const baseAmp = Math.abs(Math.sin(x * 0.13 + animTick * 2.1) * Math.cos(x * 0.05 - animTick)) * maxAmp * Math.min(1.0, activeEnergy);
+        const amp = Math.min(H * 0.44, (baseAmp + (activePlay ? prox * 3.5 * (r.dragging ? 1 : r.twang) : 0)) * stretchBoost);
+        const cy = Math.max(amp + 2, Math.min(H - amp - 2, mid + oy));
+        ctx.lineWidth = activePlay ? Math.max(1.05, 1.6 - prox * 0.45) : 1.5;
+        ctx.beginPath();
+        ctx.moveTo(x + (activePlay ? curX * prox * 0.22 : 0), cy - amp);
+        ctx.lineTo(x + (activePlay ? curX * prox * 0.22 : 0), cy + amp);
+        ctx.stroke();
+      }
+
+      // Glowing grip dot while pulling the string
+      if (r.dragging) {
+        const gy = Math.max(4, Math.min(H - 4, mid + r.pullY));
+        ctx.save();
+        ctx.globalAlpha = 0.95;
+        ctx.beginPath();
+        ctx.arc(Math.max(8, Math.min(W - 8, grabPx + r.pullX * 0.35)), gy, 3.2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
       }
     } else if (idx === 1) {
-      // Model dual glowing tubes (strictly inside [3, H-3])
+      // 1: Yellow twin tubes — clickable height toggle + cartoon squash/stretch & bend
       const mFactor = 0.25 + (Math.max(0, MODELS.indexOf(SETTINGS.model)) / 4) * 0.75;
       ctx.globalAlpha = 0.92;
       const cx = W / 2;
-      const drawTube = (tx, ty, tw, th, p) => {
-        ctx.lineWidth = 1.4;
-        ctx.beginPath(); ctx.roundRect(tx - tw / 2, ty, tw, th, [tw / 2, tw / 2, 2, 2]); ctx.stroke();
-        ctx.lineWidth = 1.0; ctx.strokeRect(tx - tw * 0.24, ty + th * 0.34, tw * 0.48, th * 0.46);
+      const pulse = 0.5 + 0.5 * Math.sin(animTick * 2.3);
+      const baseH = Math.max(22, H - 9);
+      const baseY = H - 4;
+
+      const drawTube = (tx, tState, p) => {
+        const sh = tState.scaleH;
+        const th = Math.max(11, Math.min(H - 5, baseH * sh));
+        const wScale = 1 / Math.sqrt(Math.max(0.42, Math.min(1.42, sh)));
+        const tw = Math.max(11, Math.min(24, 15 * wScale));
+        const ty = baseY - th;
+
         ctx.save();
-        ctx.globalAlpha = 0.22 + mFactor * p * 0.65;
-        const gh = th * 0.42 * mFactor;
+        // Anchor cartoon lean/skew at the base of the tower
+        ctx.translate(tx, baseY);
+        ctx.transform(1, 0, tState.tilt * 0.018, 1, 0, 0);
+        ctx.translate(-tx, -baseY);
+
+        ctx.lineWidth = 1.45;
+        ctx.beginPath();
+        ctx.roundRect(tx - tw / 2, ty, tw, th, [tw / 2, tw / 2, 2, 2]);
+        ctx.stroke();
+
+        // Inner filament frame
+        if (th > 15) {
+          ctx.lineWidth = 1.0;
+          ctx.strokeRect(tx - tw * 0.24, ty + th * 0.34, tw * 0.48, th * 0.46);
+        }
+        // Glowing core (flashes brighter on click!)
+        ctx.save();
+        ctx.globalAlpha = Math.min(1, 0.24 + mFactor * p * 0.62 + tState.flash * 0.45);
+        const gh = Math.max(3, th * 0.44 * Math.min(1, mFactor + tState.flash * 0.35));
         ctx.fillRect(tx - tw * 0.18, ty + th * 0.78 - gh, tw * 0.36, gh);
         ctx.restore();
+
+        ctx.restore();
       };
-      const pulse = 0.5 + 0.5 * Math.sin(animTick * 2.3);
-      drawTube(cx - 12, 4, 15, Math.max(20, H - 8), 0.5 + pulse * 0.5);
-      drawTube(cx + 12, 8, 15, Math.max(16, H - 12), 0.5 + (1 - pulse) * 0.5);
+
+      drawTube(cx - 13, VIS_TOY.towers[0], 0.5 + pulse * 0.5);
+      drawTube(cx + 13, VIS_TOY.towers[1], 0.5 + (1 - pulse) * 0.5);
     } else if (idx === 2) {
-      // Language & Batch digital wave (strictly clamped inside [4, H-4])
-      ctx.globalAlpha = 0.88;
-      ctx.lineWidth = 1.5;
+      // 2: Gray digital line — smooth ECG heartbeat pulse on click + rubbery pull on drag
+      const g = VIS_TOY.gray;
       const bRatio = (Math.max(0, BATCH_STEPS.indexOf(Number(SETTINGS.batch))) + 1) / BATCH_STEPS.length;
-      const maxDev = Math.max(6, H * 0.36);
+      const maxDev = Math.max(6, H * 0.34);
+      const mid = H * 0.5;
+      const pBlend = smoothstep01(g.pulseBlend);
+      const hasPulseVisual = pBlend > 0.004 || g.pulses.length > 0;
+      const pullY = g.dragging ? g.pullY : g.dispY;
+      const pullActive = g.dragging || Math.abs(pullY) > 0.12;
+      const grabPx = 6 + g.grabX * (W - 12);
+
+      const pulseEdgeFade = (pos) => smoothstep01((pos + 0.08) / 0.18) * smoothstep01((1.24 - pos) / 0.28);
+
+      // Soft luminous glow behind ECG heartbeat that fades out smoothly
+      if (hasPulseVisual && g.pulses.length > 0) {
+        ctx.save();
+        ctx.strokeStyle = col;
+        ctx.globalAlpha = 0.26 * pBlend;
+        ctx.lineWidth = 4.0;
+        ctx.beginPath();
+        for (let x = 6; x <= W - 6; x += 2) {
+          const xn = (x - 6) / Math.max(1, W - 12);
+          let ecg = 0;
+          for (const p of g.pulses) {
+            const u = (xn - p.pos) / 0.16;
+            if (Math.abs(u) < 1.35) ecg += ecgShape(u) * (H * 0.42) * pulseEdgeFade(p.pos);
+          }
+          const y = Math.min(H - 3, Math.max(3, mid + ecg));
+          if (x === 6) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      ctx.globalAlpha = 0.88 + 0.08 * Math.max(pBlend, pullActive ? 1 : 0);
+      ctx.lineWidth = 1.5 + 0.25 * pBlend;
       ctx.beginPath();
-      for (let x = 6; x < W - 6; x += 4) {
+      const step = (hasPulseVisual || pullActive) ? 2 : 4;
+      for (let x = 6; x <= W - 6; x += step) {
+        const xn = (x - 6) / Math.max(1, W - 12);
         const raw = Math.sin(x * 0.08 + animTick * 1.8) * Math.sin(x * 0.025) * maxDev * (0.35 + bRatio * Math.min(1.0, activeEnergy) * 0.62);
-        const y = Math.min(H - 4, Math.max(4, H * 0.5 + Math.round(raw / 4) * 4));
+        const normalY = Math.round(raw / 4) * 4;
+        const calmY = raw * 0.16;
+        // Seamless interpolation between normal stepped wave and calm ECG monitor baseline
+        let yOff = normalY * (1 - pBlend) + calmY * pBlend;
+
+        // Add ECG heartbeat waves with gentle edge fade
+        for (const p of g.pulses) {
+          const u = (xn - p.pos) / 0.16;
+          if (Math.abs(u) < 1.35) {
+            yOff += ecgShape(u) * (H * 0.42) * pulseEdgeFade(p.pos);
+          }
+        }
+
+        // Add cartoon elastic drag pull
+        if (pullActive) {
+          const d = (x - grabPx) / Math.max(22, W * 0.18);
+          yOff += pullY * Math.exp(-d * d);
+        }
+
+        const y = Math.min(H - 3, Math.max(3, mid + yOff));
         if (x === 6) ctx.moveTo(x, y); else ctx.lineTo(x, y);
       }
       ctx.stroke();
-    } else {
-      // Align twin voiceprint rings (strictly inside H)
-      ctx.globalAlpha = SETTINGS.align ? 0.9 : 0.2;
-      ctx.lineWidth = 1.5;
-      const baseR = Math.min(13, H * 0.26);
-      const drawRing = (bx, by, rad, phase) => {
-        ctx.beginPath();
-        for (let a = 0; a <= Math.PI * 2 + 0.2; a += 0.25) {
-          const w = Math.sin(a * 3 + animTick * 1.8 + phase) * 2.0 * Math.min(1.0, activeEnergy);
-          const rx = bx + Math.cos(a) * (rad + w);
-          const ry = by + Math.sin(a) * (rad * 0.85 - w * 0.6);
-          if (a === 0) ctx.moveTo(rx, ry); else ctx.lineTo(rx, ry);
+
+      // Bright traveling dot on leading edge of each heartbeat pulse (fades smoothly at edges)
+      for (const p of g.pulses) {
+        if (p.pos >= 0 && p.pos <= 1) {
+          const fade = smoothstep01(p.pos / 0.12) * smoothstep01((1.0 - p.pos) / 0.14);
+          const px = 6 + p.pos * (W - 12);
+          const py = Math.min(H - 3, Math.max(3, mid + ecgShape(0) * (H * 0.42) * 0.15 * fade));
+          ctx.save();
+          ctx.globalAlpha = 0.95 * fade;
+          ctx.fillStyle = '#FFFFFF';
+          ctx.beginPath();
+          ctx.arc(px, py, 2.4 * (0.5 + 0.5 * fade), 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
         }
-        ctx.closePath(); ctx.stroke();
-      };
-      drawRing(W * 0.42, H * 0.5, baseR, 0);
-      drawRing(W * 0.58, H * 0.5, baseR * 0.94, 2.1);
+      }
+    } else {
+      // 3: Green multi-bubble cluster — varied sizes & shapes, poppable & stretchable
+      const baseR = Math.min(11.5, H * 0.235);
+      const baseAlpha = SETTINGS.align ? 0.92 : 0.38;
+
+      for (let i = 0; i < VIS_TOY.bubbles.length; i++) {
+        const b = VIS_TOY.bubbles[i];
+        if (!b.alive) continue;
+        const center = getBubbleCenter(b, W, H);
+        const bx = center.x;
+        const by = center.y;
+        const rad = baseR * b.rScale * b.inflate;
+        const pullMag = Math.hypot(b.sx, b.sy);
+        const pullAng = Math.atan2(b.sy, b.sx);
+        const isDragged = VIS_TOY.bubbleDrag.active && VIS_TOY.bubbleDrag.idx === i && VIS_TOY.bubbleDrag.moved;
+
+        ctx.save();
+        ctx.globalAlpha = (isDragged || b.wobble > 0.1) ? 0.98 : baseAlpha;
+        ctx.lineWidth = isDragged ? 1.65 : (b.rScale < 0.55 ? 1.25 : 1.45);
+
+        ctx.beginPath();
+        const steps = 28;
+        for (let k = 0; k <= steps; k++) {
+          const a = (k / steps) * Math.PI * 2;
+          const idleW = Math.sin(a * b.lobes + animTick * 1.85 + b.phase) * (rad * b.lobeAmp + b.wobble * 2.4) * Math.min(1.05, activeEnergy + 0.3 + b.wobble);
+          const alignDir = Math.cos(a - pullAng);
+          const bulge = pullMag > 0.5 ? (Math.pow(Math.max(0, alignDir), 2.2) * pullMag * 0.85 - Math.pow(Math.max(0, -alignDir), 2) * pullMag * 0.15) : 0;
+          const squash = pullMag > 0.5 ? (1 - Math.min(0.28, pullMag / 70) * Math.pow(Math.sin(a - pullAng), 2)) : 1;
+          const rx = bx + b.sx * 0.25 + Math.cos(a) * (rad * b.ax * squash + idleW) + Math.cos(pullAng) * bulge * (alignDir > 0 ? 1 : 0);
+          const ry = by + b.sy * 0.25 + Math.sin(a) * (rad * b.ay * squash - idleW * 0.45) + Math.sin(pullAng) * bulge * (alignDir > 0 ? 1 : 0);
+          if (k === 0) ctx.moveTo(rx, ry); else ctx.lineTo(rx, ry);
+        }
+        ctx.closePath();
+        ctx.save();
+        ctx.globalAlpha = (isDragged ? 0.15 : 0.065) * b.inflate;
+        ctx.fill();
+        ctx.restore();
+        ctx.stroke();
+
+        // Cute soap-bubble specular glint arc
+        if (rad > 4.2) {
+          ctx.save();
+          ctx.globalAlpha = 0.55 * b.inflate;
+          ctx.lineWidth = rad < 6.5 ? 1.0 : 1.2;
+          ctx.beginPath();
+          ctx.arc(bx + b.sx * 0.22 - rad * 0.2 * b.ax, by + b.sy * 0.22 - rad * 0.18 * b.ay, rad * 0.33, Math.PI * 1.08, Math.PI * 1.52);
+          ctx.stroke();
+          ctx.restore();
+        }
+        ctx.restore();
+      }
+
+      // Pop shockwave rings
+      for (const pr of VIS_TOY.popRings) {
+        const a = Math.max(0, pr.life / pr.maxLife);
+        ctx.save();
+        ctx.globalAlpha = a * 0.75;
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.arc(pr.x, pr.y, pr.r, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // Popped mint droplets
+      for (const p of VIS_TOY.particles) {
+        const a = Math.max(0, p.life / p.maxLife);
+        ctx.save();
+        ctx.globalAlpha = a * 0.95;
+        ctx.fillStyle = p.bright ? '#FFFFFF' : col;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, Math.max(0.6, p.r * a), 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
     }
   }
   requestAnimationFrame(drawVisualizers);
@@ -1975,6 +2672,7 @@ async function bootstrap() {
   renderAllControls();
   setupMiniPlayer(ACTIVE_SUB);
   renderSubtitles();
+  initInteractiveVisualizers();
   requestAnimationFrame(drawVisualizers);
 
   setInterval(() => {

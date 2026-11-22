@@ -292,7 +292,7 @@ button { font: inherit; color: inherit; background: none; border: none; }
   grid-template-rows: 48px;
   gap: 10px;
   overflow: hidden;
-  pointer-events: none;
+  pointer-events: auto;
   z-index: 1;
   border-bottom: 1px solid rgba(0,0,0,0.55);
   background: var(--glass-bg);
@@ -307,8 +307,13 @@ button { font: inherit; color: inherit; background: none; border: none; }
   max-height: 48px;
   min-height: 0;
   display: block;
-  pointer-events: none;
+  pointer-events: auto;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
 }
+.vis-bay canvas.vis-clickable { cursor: pointer; }
+.vis-bay canvas.vis-grabbing { cursor: grabbing; }
 
 .channels-grid-4 {
   position: relative;
